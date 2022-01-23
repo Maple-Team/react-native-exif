@@ -3,24 +3,30 @@ package com.devialab.exif.utils;
 import android.annotation.SuppressLint;
 import android.content.ContentUris;
 import android.content.Context;
-import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
-import android.support.v4.content.FileProvider;
+import android.text.TextUtils;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 /*
  * Taken from react-native-image-picker
  */
 
 public class RealPathUtil {
-
+    public static final int EOF = -1;
+    private static final int DEFAULT_BUFFER_SIZE = 1024 * 4;
 	public static @Nullable Uri compatUriFromFile(@NonNull final Context context,
 												  @NonNull final File file) {
 		Uri result = null;
@@ -124,25 +130,7 @@ public class RealPathUtil {
 	 */
 	public static String getDataColumn(Context context, Uri uri, String selection,
 	                                   String[] selectionArgs) {
-
-		Cursor cursor = null;
-		final String column = "_data";
-		final String[] projection = {
-				column
-		};
-
-		try {
-			cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs,
-					null);
-			if (cursor != null && cursor.moveToFirst()) {
-				final int index = cursor.getColumnIndexOrThrow(column);
-				return cursor.getString(index);
-			}
-		} finally {
-			if (cursor != null)
-				cursor.close();
-		}
-		return null;
+		return getFilePathFromURI(context, uri);
 	}
 
 
@@ -202,4 +190,47 @@ public class RealPathUtil {
 		final File file = new File(appDir, uri.getLastPathSegment());
 		return file.exists() ? file.toString(): null;
 	}
+	public static String getFilePathFromURI(Context context, Uri contentUri) {
+		//copy file and send new file path
+		String fileName = getFileName(contentUri);
+		if (!TextUtils.isEmpty(fileName)) {
+            File rootDataDir = context.getFilesDir();
+			File copyFile = new File(rootDataDir + File.separator + fileName);
+			copy(context, contentUri, copyFile);
+			return copyFile.getAbsolutePath();
+		}
+		return null;
+	}
+
+	public static String getFileName(Uri uri) {
+		if (uri == null) return null;
+		String fileName = null;
+		String path = uri.getPath();
+		int cut = path.lastIndexOf('/');
+		if (cut != -1) {
+			fileName = path.substring(cut + 1);
+		}
+		return fileName;
+	}
+
+	public static void copy(Context context, Uri srcUri, File dstFile) {
+		try {
+			InputStream inputStream = context.getContentResolver().openInputStream(srcUri);
+			if (inputStream == null) return;
+			OutputStream outputStream = new FileOutputStream(dstFile);
+            copyLarge(inputStream, outputStream, new byte[DEFAULT_BUFFER_SIZE]);
+			inputStream.close();
+			outputStream.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+    static void copyLarge(final InputStream input, final OutputStream output, final byte[] buffer)
+            throws IOException {
+        int n;
+        while (EOF != (n = input.read(buffer))) {
+            output.write(buffer, 0, n);
+        }
+    }
 }
